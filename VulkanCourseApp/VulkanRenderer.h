@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "Utilities.h"
+#include "DebugUtilsMessenger.h"
 
 class VulkanRenderer
 {
@@ -20,12 +21,19 @@ public:
 
 private:
 	void createInstance();
+	void createLogicalDevice();
+	void createSurface();
 
 	void getPhysicalDevice();
-	void createLogicalDevice();
+	SwapchainDetails getSwapchainDetails(const VkPhysicalDevice& device) const;
+
+	void populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& createInfo);
+	void setupDebugMessenger();
 
 	bool checkInstanceExtensionSupport(const std::vector<const char*>& extensionsToCheck) const;
+	bool checkDeviceExtensionSupport(const VkPhysicalDevice& device) const;
 	bool checkDeviceSuitable(const VkPhysicalDevice& device) const;
+	bool checkValidationLayerSupport() const;
 
 	QueueFamilyIndices getQueueFamilies(const VkPhysicalDevice& device) const;
 
@@ -33,6 +41,8 @@ private:
 	GLFWwindow* window;
 
 	VkInstance instance;
+	VkSurfaceKHR surface;
+	VkDebugUtilsMessengerEXT debugMessenger;
 
 	struct {
 		VkPhysicalDevice physicalDevice;
@@ -40,5 +50,5 @@ private:
 	} mainDevice;
 
 	VkQueue graphicsQueue;
+	VkQueue presentationQueue;
 };
-
