@@ -23,12 +23,19 @@ private:
 	void createInstance();
 	void createLogicalDevice();
 	void createSurface();
+	void createSwapchain();
 
 	void getPhysicalDevice();
 	SwapchainDetails getSwapchainDetails(const VkPhysicalDevice& device) const;
 
 	void populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& createInfo);
 	void setupDebugMessenger();
+
+	VkSurfaceFormatKHR chooseBestSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& formats) const;
+	VkPresentModeKHR chooseBestPresentationMode(const std::vector<VkPresentModeKHR>& presentationModes) const;
+	VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR& surfaceCapabilities) const;
+
+	VkImageView createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags);
 
 	bool checkInstanceExtensionSupport(const std::vector<const char*>& extensionsToCheck) const;
 	bool checkDeviceExtensionSupport(const VkPhysicalDevice& device) const;
@@ -42,7 +49,12 @@ private:
 
 	VkInstance instance;
 	VkSurfaceKHR surface;
+	VkSwapchainKHR swapchain;
+	std::vector<SwapchainImage> swapchainImages;
 	VkDebugUtilsMessengerEXT debugMessenger;
+
+	VkFormat swapchainFormat;
+	VkExtent2D swapchainExtent;
 
 	struct {
 		VkPhysicalDevice physicalDevice;

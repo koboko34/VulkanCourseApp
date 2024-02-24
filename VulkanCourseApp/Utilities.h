@@ -20,3 +20,8 @@ struct SwapchainDetails {
 	std::vector<VkSurfaceFormatKHR> surfaceFormats;			// surface image formats, e.g R8G8B8A8
 	std::vector<VkPresentModeKHR> presentationModes;		// presentation modes, eg. immediate mode, mailbox
 };
+
+struct SwapchainImage {
+	VkImage image;
+	VkImageView imageView;
+};

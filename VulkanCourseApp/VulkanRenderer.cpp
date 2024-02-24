@@ -1,5 +1,6 @@
 #include <iostream>
 #include <unordered_set>
+#include <algorithm>
 
 #include "VulkanRenderer.h"
 
@@ -31,6 +32,7 @@ int VulkanRenderer::init(GLFWwindow* window)
 		createSurface();
 		getPhysicalDevice();
 		createLogicalDevice();
+		createSwapchain();
 	}
 	catch (const std::runtime_error& e)
 	{
@@ -43,6 +45,11 @@ int VulkanRenderer::init(GLFWwindow* window)
 
 void VulkanRenderer::cleanup()
 {
+	for (const auto& swapchainImage : swapchainImages)
+	{
+		vkDestroyImageView(mainDevice.logicalDevice, swapchainImage.imageView, nullptr);
+	}
+	vkDestroySwapchainKHR(mainDevice.logicalDevice, swapchain, nullptr);
 	vkDestroySurfaceKHR(instance, surface, nullptr);
 	vkDestroyDevice(mainDevice.logicalDevice, nullptr);
 	if (enableValidationLayers)
@@ -208,6 +215,79 @@ void VulkanRenderer::createSurface()
 	}
 }
 
+void VulkanRenderer::createSwapchain()
+{
+	SwapchainDetails swapchainDetails = getSwapchainDetails(mainDevice.physicalDevice);
+	uint32_t imageCount = swapchainDetails.surfaceCapabilities.minImageCount + 1;
+	
+	// if maxImageCount == 0, means no limit on max image count
+	if (swapchainDetails.surfaceCapabilities.maxImageCount > 0 &&
+		imageCount > swapchainDetails.surfaceCapabilities.maxImageCount)
+	{
+		imageCount = swapchainDetails.surfaceCapabilities.maxImageCount;
+	}
+
+	VkSurfaceFormatKHR surfaceFormat = chooseBestSurfaceFormat(swapchainDetails.surfaceFormats);
+	VkExtent2D extent = chooseSwapExtent(swapchainDetails.surfaceCapabilities);
+
+	VkSwapchainCreateInfoKHR swapchainCreateInfo = {};
+	swapchainCreateInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+	swapchainCreateInfo.surface = surface;
+	swapchainCreateInfo.minImageCount = imageCount;
+	swapchainCreateInfo.imageFormat = surfaceFormat.format;
+	swapchainCreateInfo.imageColorSpace = surfaceFormat.colorSpace;
+	swapchainCreateInfo.imageExtent = extent;
+	swapchainCreateInfo.imageArrayLayers = 1;
+	swapchainCreateInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+	swapchainCreateInfo.preTransform = swapchainDetails.surfaceCapabilities.currentTransform;
+	swapchainCreateInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+	swapchainCreateInfo.presentMode = chooseBestPresentationMode(swapchainDetails.presentationModes);
+	swapchainCreateInfo.clipped = VK_TRUE;
+	swapchainCreateInfo.oldSwapchain = VK_NULL_HANDLE;
+
+	QueueFamilyIndices queueFamilyIndices = getQueueFamilies(mainDevice.physicalDevice);
+	// if graphics and presentation queues are different, then the swapchain must let images be shared between families
+	if (queueFamilyIndices.graphicsFamily != queueFamilyIndices.presentationFamily)
+	{
+		uint32_t indices[] = {
+			static_cast<uint32_t>(queueFamilyIndices.graphicsFamily),
+			static_cast<uint32_t>(queueFamilyIndices.presentationFamily)
+		};
+		
+		swapchainCreateInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
+		swapchainCreateInfo.queueFamilyIndexCount = 2;
+		swapchainCreateInfo.pQueueFamilyIndices = indices;
+	}
+	else
+	{
+		swapchainCreateInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+		swapchainCreateInfo.queueFamilyIndexCount = 0;
+		swapchainCreateInfo.pQueueFamilyIndices = nullptr;
+	}
+
+	VkResult result = vkCreateSwapchainKHR(mainDevice.logicalDevice, &swapchainCreateInfo, nullptr, &swapchain);
+	if (result != VK_SUCCESS)
+	{
+		throw std::runtime_error("Failed to create swapchain!");
+	}
+
+	swapchainFormat = surfaceFormat.format;
+	swapchainExtent = extent;
+
+	uint32_t swapchainImageCount;
+	vkGetSwapchainImagesKHR(mainDevice.logicalDevice, swapchain, &swapchainImageCount, nullptr);
+	std::vector<VkImage> images(swapchainImageCount);
+	vkGetSwapchainImagesKHR(mainDevice.logicalDevice, swapchain, &swapchainImageCount, images.data());
+
+	for (const VkImage image : images)
+	{
+		SwapchainImage swapchainImage = {};
+		swapchainImage.image = image;
+		swapchainImage.imageView = createImageView(image, swapchainFormat, VK_IMAGE_ASPECT_COLOR_BIT);
+		swapchainImages.push_back(swapchainImage);
+	}
+}
+
 void VulkanRenderer::populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& createInfo)
 {
 	createInfo = {};
@@ -242,6 +322,84 @@ void VulkanRenderer::setupDebugMessenger()
 	{
 		throw std::runtime_error("Failed to set up debug messenger!");
 	}
+}
+
+VkSurfaceFormatKHR VulkanRenderer::chooseBestSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& formats) const
+{
+	if (formats.size() == 1 && formats[0].format == VK_FORMAT_UNDEFINED) // doesn't actually mean no format found, instead it returned all formats
+	{
+		return formats[0];
+	}
+
+	for (const auto& format : formats)
+	{
+		if (format.format == VK_FORMAT_R8G8B8A8_UNORM && format.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)
+		{
+			return format;
+		}
+	}
+	return formats[0];
+}
+
+VkPresentModeKHR VulkanRenderer::chooseBestPresentationMode(const std::vector<VkPresentModeKHR>& presentationModes) const
+{
+	for (const auto& presentationMode : presentationModes)
+	{
+		if (presentationMode == VK_PRESENT_MODE_MAILBOX_KHR)
+		{
+			return presentationMode;
+		}
+	}
+	
+	return VK_PRESENT_MODE_FIFO_KHR;	// guaranteed by the Vulkan spec to be supported
+}
+
+VkExtent2D VulkanRenderer::chooseSwapExtent(const VkSurfaceCapabilitiesKHR& surfaceCapabilities) const
+{
+	// if current extent is at numeric limit, then extent can vary. Otherwise, it is the size of the window
+	if (surfaceCapabilities.currentExtent.width != std::numeric_limits<uint32_t>::max())
+	{
+		return surfaceCapabilities.currentExtent;
+	}
+	else
+	{
+		int width, height;
+		glfwGetFramebufferSize(window, &width, &height);
+
+		VkExtent2D newExtent = {};
+		newExtent.width = static_cast<uint32_t>(width);
+		newExtent.height = static_cast<uint32_t>(height);
+
+		newExtent.width = std::max(surfaceCapabilities.maxImageExtent.width, std::min(surfaceCapabilities.maxImageExtent.width, newExtent.width));
+		newExtent.height = std::max(surfaceCapabilities.maxImageExtent.height, std::min(surfaceCapabilities.maxImageExtent.height, newExtent.height));
+		return newExtent;
+	}
+}
+
+VkImageView VulkanRenderer::createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags)
+{
+	VkImageViewCreateInfo imageViewCreateInfo = {};
+	imageViewCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+	imageViewCreateInfo.image = image;
+	imageViewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+	imageViewCreateInfo.format = swapchainFormat;
+	imageViewCreateInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+	imageViewCreateInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+	imageViewCreateInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+	imageViewCreateInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+	imageViewCreateInfo.subresourceRange.aspectMask = aspectFlags;
+	imageViewCreateInfo.subresourceRange.baseMipLevel = 0;
+	imageViewCreateInfo.subresourceRange.levelCount = 1;
+	imageViewCreateInfo.subresourceRange.baseArrayLayer = 0;
+	imageViewCreateInfo.subresourceRange.layerCount = 1;
+
+	VkImageView imageView = {};
+	VkResult result = vkCreateImageView(mainDevice.logicalDevice, &imageViewCreateInfo, nullptr, &imageView);
+	if (result != VK_SUCCESS)
+	{
+		throw std::runtime_error("Failed to create image view!");
+	}
+	return imageView;
 }
 
 bool VulkanRenderer::checkInstanceExtensionSupport(const std::vector<const char*>& extensionsToCheck) const
