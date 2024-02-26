@@ -24,6 +24,7 @@ private:
 	void createLogicalDevice();
 	void createSurface();
 	void createSwapchain();
+	void createGraphicsPipeline();
 
 	void getPhysicalDevice();
 	SwapchainDetails getSwapchainDetails(const VkPhysicalDevice& device) const;
@@ -36,6 +37,7 @@ private:
 	VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR& surfaceCapabilities) const;
 
 	VkImageView createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags);
+	VkShaderModule createShaderModule(const std::vector<char>& code);
 
 	bool checkInstanceExtensionSupport(const std::vector<const char*>& extensionsToCheck) const;
 	bool checkDeviceExtensionSupport(const VkPhysicalDevice& device) const;
