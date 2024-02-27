@@ -17,6 +17,7 @@ public:
 
 public:
 	int init(GLFWwindow* window);
+	void draw();
 	void cleanup();
 
 private:
@@ -29,6 +30,7 @@ private:
 	void createFramebuffers();
 	void createCommandPool();
 	void createCommandBuffers();
+	void createSynchronisation();
 
 	void recordCommands();
 
@@ -55,6 +57,8 @@ private:
 private:
 	GLFWwindow* window;
 
+	int currentFrame = 0;
+
 	VkInstance instance;
 	VkSurfaceKHR surface;
 	VkSwapchainKHR swapchain;
@@ -77,4 +81,8 @@ private:
 
 	VkQueue graphicsQueue;
 	VkQueue presentationQueue;
+
+	std::vector<VkSemaphore> imageAvailable;
+	std::vector<VkSemaphore> renderComplete;
+	std::vector<VkFence> drawFences;
 };
