@@ -6,6 +6,7 @@
 #include <stdexcept>
 #include <vector>
 
+#include "Mesh.h"
 #include "Utilities.h"
 #include "DebugUtilsMessenger.h"
 
@@ -55,6 +56,8 @@ private:
 	QueueFamilyIndices getQueueFamilies(const VkPhysicalDevice& device) const;
 
 private:
+	Mesh firstMesh;
+	
 	GLFWwindow* window;
 
 	int currentFrame = 0;
