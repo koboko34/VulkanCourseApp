@@ -56,7 +56,7 @@ private:
 	QueueFamilyIndices getQueueFamilies(const VkPhysicalDevice& device) const;
 
 private:
-	Mesh firstMesh;
+	std::vector<Mesh> meshes;
 	
 	GLFWwindow* window;
 

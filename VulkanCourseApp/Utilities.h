@@ -2,6 +2,9 @@
 
 #include <fstream>
 
+#define GLFW_INCLUDE_VULKAN
+#include "GLFW/glfw3.h"
+
 #include <glm/glm.hpp>
 
 const std::vector<const char*> deviceExtensions = {
@@ -52,4 +55,100 @@ static std::vector<char> readFile(const std::string& filepath)
 	file.read(fileBuffer.data(), fileSize);
 	file.close();
 	return fileBuffer;
+}
+
+static uint32_t findMemoryTypeIndex(VkPhysicalDevice physicalDevice, uint32_t allowedTypes, VkMemoryPropertyFlags properties)
+{
+	VkPhysicalDeviceMemoryProperties memoryProperties;
+	vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memoryProperties);
+
+	for (uint32_t i = 0; i < memoryProperties.memoryTypeCount; i++)
+	{
+		if (allowedTypes & (1 << i) &&
+			(memoryProperties.memoryTypes[i].propertyFlags & properties) == properties)
+		{
+			return i;
+		}
+	}
+	throw std::runtime_error("Failed to find suitable memory type index for vertex memory allocation!");
+	return -1;
+}
+
+static void createBuffer(VkPhysicalDevice physicalDevice, VkDevice logicalDevice, VkDeviceSize bufferSize, VkBufferUsageFlags bufferUsageFlags,
+	uint32_t memoryTypeIndex, VkBuffer* buffer, VkDeviceMemory* bufferMemory)
+{
+	VkBufferCreateInfo bufferCreateInfo = {};
+	bufferCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+	bufferCreateInfo.size = bufferSize;
+	bufferCreateInfo.usage = bufferUsageFlags;
+	bufferCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+	VkResult result = vkCreateBuffer(logicalDevice, &bufferCreateInfo, nullptr, buffer);
+	if (result != VK_SUCCESS)
+	{
+		throw std::runtime_error("Failed to create vertex buffer!");
+	}
+
+	VkMemoryRequirements memoryRequirements = {};
+	vkGetBufferMemoryRequirements(logicalDevice, *buffer, &memoryRequirements);
+
+	VkMemoryAllocateInfo memoryAllocateInfo = {};
+	memoryAllocateInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+	memoryAllocateInfo.allocationSize = memoryRequirements.size;
+	memoryAllocateInfo.memoryTypeIndex = findMemoryTypeIndex(physicalDevice, memoryRequirements.memoryTypeBits,
+		memoryTypeIndex);
+
+	result = vkAllocateMemory(logicalDevice, &memoryAllocateInfo, nullptr, bufferMemory);
+	if (result != VK_SUCCESS)
+	{
+		throw std::runtime_error("Failed to allocate memory for vertex buffer!");
+	}
+
+	result = vkBindBufferMemory(logicalDevice, *buffer, *bufferMemory, 0);
+	if (result != VK_SUCCESS)
+	{
+		throw std::runtime_error("Failed to bind vertex buffer memory!");
+	}
+}
+
+static void copyBuffer(VkDevice logicalDevice, VkQueue transferQueue, VkCommandPool transferCommandPool, VkBuffer srcBuffer,
+	VkBuffer dstBuffer, VkDeviceSize bufferSize)
+{
+	VkCommandBufferAllocateInfo allocInfo = {};
+	allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+	allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+	allocInfo.commandPool = transferCommandPool;
+	allocInfo.commandBufferCount = 1;
+
+	VkCommandBuffer commandBuffer = {};
+
+	VkResult result = vkAllocateCommandBuffers(logicalDevice, &allocInfo, &commandBuffer);
+	if (result != VK_SUCCESS)
+	{
+		throw std::runtime_error("Failed to allocate command buffer!");
+	}
+
+	VkCommandBufferBeginInfo commandBufferBeginInfo = {};
+	commandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	commandBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+	vkBeginCommandBuffer(commandBuffer, &commandBufferBeginInfo);
+
+		VkBufferCopy bufferCopyRegion = {};
+		bufferCopyRegion.srcOffset = 0;
+		bufferCopyRegion.dstOffset = 0;
+		bufferCopyRegion.size = bufferSize;
+		vkCmdCopyBuffer(commandBuffer, srcBuffer, dstBuffer, 1, &bufferCopyRegion);
+
+	vkEndCommandBuffer(commandBuffer);
+
+	VkSubmitInfo submitInfo = {};
+	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	submitInfo.commandBufferCount = 1;
+	submitInfo.pCommandBuffers = &commandBuffer;
+
+	vkQueueSubmit(transferQueue, 1, &submitInfo, VK_NULL_HANDLE);
+	vkQueueWaitIdle(transferQueue);
+
+	vkFreeCommandBuffers(logicalDevice, transferCommandPool, 1, &commandBuffer);
 }
