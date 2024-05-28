@@ -27,11 +27,16 @@ private:
 	void createSurface();
 	void createSwapchain();
 	void createRenderPass();
+	void createDescriptorSetLayout();
 	void createGraphicsPipeline();
 	void createFramebuffers();
 	void createCommandPool();
 	void createCommandBuffers();
 	void createSynchronisation();
+
+	void createUniformBuffers();
+	void createDescriptorPool();
+	void createDescriptorSets();
 
 	void recordCommands();
 
@@ -57,6 +62,20 @@ private:
 
 private:
 	std::vector<Mesh> meshes;
+
+	struct MVP {
+		glm::mat4 projection;
+		glm::mat4 view;
+		glm::mat4 model;
+	} mvp;
+
+	VkDescriptorSetLayout descriptorSetLayout;
+	
+	VkDescriptorPool descriptorPool;
+	std::vector<VkDescriptorSet> descriptorSets;
+	
+	std::vector<VkBuffer> uniformBuffer;
+	std::vector<VkDeviceMemory> uniformBufferMemory;
 	
 	GLFWwindow* window;
 
