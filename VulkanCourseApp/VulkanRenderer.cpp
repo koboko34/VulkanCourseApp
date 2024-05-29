@@ -42,6 +42,12 @@ int VulkanRenderer::init(GLFWwindow* window)
 		createFramebuffers();
 		createCommandPool();
 
+		mvp.projection = glm::perspective(glm::radians(45.f), (float)swapchainExtent.width / (float)swapchainExtent.height, 0.1f, 100.f);
+		mvp.view = glm::lookAt(glm::vec3(0.f, 0.f, 2.f), glm::vec3(0.f, 0.f, 0.f), glm::vec3(0.f, 1.f, 0.f));
+		mvp.model = glm::mat4(1.f);
+
+		mvp.projection[1][1] *= -1;	// Vulkan unlike OpenGL treats y axis as a negative, so have to multiply by -1 to work with glm
+
 		std::vector<Vertex> vertices = {
 			{{0.f, -0.4f, 0.f}, {1.f, 0.f, 0.f}},
 			{{0.4f, 0.4f, 0.f}, {0.f, 1.f, 0.f}},
@@ -82,6 +88,11 @@ int VulkanRenderer::init(GLFWwindow* window)
 	return 0;
 }
 
+void VulkanRenderer::updateModel(glm::mat4 newModel)
+{
+	mvp.model = newModel;
+}
+
 void VulkanRenderer::draw()
 {
 	vkWaitForFences(mainDevice.logicalDevice, 1, &drawFences[currentFrame], VK_TRUE, std::numeric_limits<uint64_t>::max());
@@ -95,6 +106,7 @@ void VulkanRenderer::draw()
 		throw std::runtime_error("Failed to acquire next available image in swapchain!");
 	}
 
+	updateUniformBuffer(imageIndex);
 
 	// submit command buffer to render, waiting on imageAvailable to start and signalling renderComplete when finished
 	VkPipelineStageFlags stageFlags[] = {
@@ -539,6 +551,11 @@ void VulkanRenderer::createDescriptorSets()
 
 	for (size_t i = 0; i < uniformBuffer.size(); i++)
 	{
+		VkDescriptorBufferInfo bufferInfo = {};
+		bufferInfo.buffer = uniformBuffer[i];
+		bufferInfo.offset = 0;
+		bufferInfo.range = sizeof(MVP);
+		
 		VkWriteDescriptorSet mvpSetWrite = {};
 		mvpSetWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 		mvpSetWrite.dstSet = descriptorSets[i];
@@ -546,9 +563,18 @@ void VulkanRenderer::createDescriptorSets()
 		mvpSetWrite.dstArrayElement = 0;
 		mvpSetWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
 		mvpSetWrite.descriptorCount = 1;
-		//mvpSetWrite.pBufferInfo
-		// finish this 
+		mvpSetWrite.pBufferInfo = &bufferInfo;
+
+		vkUpdateDescriptorSets(mainDevice.logicalDevice, 1, &mvpSetWrite, 0, nullptr);
 	}
+}
+
+void VulkanRenderer::updateUniformBuffer(uint32_t imageIndex)
+{
+	void* data;
+	vkMapMemory(mainDevice.logicalDevice, uniformBufferMemory[imageIndex], 0, sizeof(MVP), 0, &data);
+	memcpy(data, &mvp, sizeof(MVP));
+	vkUnmapMemory(mainDevice.logicalDevice, uniformBufferMemory[imageIndex]);
 }
 
 void VulkanRenderer::createGraphicsPipeline()
@@ -641,7 +667,7 @@ void VulkanRenderer::createGraphicsPipeline()
 	rasterizationCreateInfo.polygonMode = VK_POLYGON_MODE_FILL;
 	rasterizationCreateInfo.lineWidth = 1.f;
 	rasterizationCreateInfo.cullMode = VK_CULL_MODE_BACK_BIT;
-	rasterizationCreateInfo.frontFace = VK_FRONT_FACE_CLOCKWISE;
+	rasterizationCreateInfo.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
 	rasterizationCreateInfo.depthBiasEnable = VK_FALSE;				// whether to add depth bias to fragments. Good for stopping "shadow acne"
 
 
@@ -879,6 +905,9 @@ void VulkanRenderer::recordCommands()
 					VkBuffer vertexBuffers[] = { mesh.getVertexBuffer() };
 					vkCmdBindVertexBuffers(commandBuffers[i], 0, 1, vertexBuffers, offsets);
 					vkCmdBindIndexBuffer(commandBuffers[i], mesh.getIndexBuffer(), offsets[0], VK_INDEX_TYPE_UINT32);
+
+					vkCmdBindDescriptorSets(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSets[i],
+						0, nullptr);
 
 					vkCmdDrawIndexed(commandBuffers[i], mesh.getIndexCount(), 1, 0, 0, 0);
 				}

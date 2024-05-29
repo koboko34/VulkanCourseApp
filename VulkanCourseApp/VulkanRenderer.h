@@ -3,6 +3,9 @@
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
+#include "glm/glm.hpp"
+#include "glm/gtc/matrix_transform.hpp"
+
 #include <stdexcept>
 #include <vector>
 
@@ -18,6 +21,9 @@ public:
 
 public:
 	int init(GLFWwindow* window);
+
+	void updateModel(glm::mat4 newModel);
+
 	void draw();
 	void cleanup();
 
@@ -37,6 +43,8 @@ private:
 	void createUniformBuffers();
 	void createDescriptorPool();
 	void createDescriptorSets();
+
+	void updateUniformBuffer(uint32_t imageIndex);
 
 	void recordCommands();
 
